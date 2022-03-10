@@ -50,14 +50,20 @@ impl Request {
         }
     }
 
-    fn send(&self) {
-        let socket = UdpSocket::bind("0.0.0.0:0").expect("couldn't bind to address");
-        let header_ptr = (&self.header as *const Header) as *const u8;
-        let request = unsafe { slice::from_raw_parts(header_ptr, mem::size_of::<Header>()) };
-        match socket.send_to(request, "gbg1.ntp.se:123") {
-            Ok(bytes) => println!("{}", bytes),
-            Err(e) => println!("Error sending datagram: {}", e)
+    fn set_version(&mut self, version: u8) {
+        if (version <= 4) {
+            self.header.bit_field |= version << 3;
         }
+    }
+
+    fn serialize(&self) -> [u8; 64] {
+        let mut buffer: [u8; 64] = [0; 64];
+        buffer[0] = self.header.bit_field;
+        buffer[1] = self.header.stratum;
+        buffer[2] = self.header.poll;
+        buffer[3] = self.header.precision;
+
+        return buffer;
     }
 }
 
@@ -68,8 +74,15 @@ fn main() {
     let mut request = Request::default();
 
     request.set_mode(Mode::NtpMode3);
+    request.set_version(4);
 
-    request.send();
+    let socket = UdpSocket::bind("0.0.0.0:0").expect("couldn't bind to address");
+    let buffer = request.serialize();
+    println!("{}", buffer[0]);
+    match socket.send_to(&buffer, "pool.ntp.org:123") {
+        Ok(bytes) => println!("Sent request, {} bytes", bytes),
+        Err(e) => println!("Error sending datagram: {}", e)
+    }
 
 }
 
