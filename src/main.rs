@@ -50,7 +50,7 @@ impl Request {
     }
 
     fn set_version(&mut self, version: u8) {
-        if (version <= 4) {
+        if version <= 4 {
             self.header.bit_field |= version << 3;
         }
     }
@@ -76,12 +76,18 @@ fn main() {
     request.set_version(4);
 
     let socket = UdpSocket::bind("0.0.0.0:0").expect("couldn't bind to address");
+    socket.set_read_timeout(Some(std::time::Duration::from_secs(10))).expect("set_read_timeout call failed");
+
+    // Serialize and send request
     let buffer = request.serialize();
-    println!("{}", buffer[0]);
     match socket.send_to(&buffer, "pool.ntp.org:123") {
         Ok(bytes) => println!("Sent request, {} bytes", bytes),
         Err(e) => println!("Error sending datagram: {}", e)
     }
+
+    let mut recv_buffer = [0; 48];
+    let (number_of_bytes, src_addr) = socket.recv_from(&mut recv_buffer).expect("Didn't receive data");
+    println!("Received {} bytes from {}", number_of_bytes, src_addr);
 
 }
 
