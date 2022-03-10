@@ -16,13 +16,12 @@ struct Header {
     origin_timestamp: u64,
     receive_timestamp: u64,
     transmit_timestamp: u64,
-    dgst: u128,
 }
 
 impl Header {
     fn default () -> Header {
         Header{bit_field: 0, stratum: 0, poll: 0, precision: 0, root_delay: 0, root_dispersion: 0, ref_id: 0, ref_timestamp: 0,
-            origin_timestamp: 0, receive_timestamp: 0, transmit_timestamp: 0, dgst: 0}
+            origin_timestamp: 0, receive_timestamp: 0, transmit_timestamp: 0}
     }
 }
 
@@ -56,8 +55,8 @@ impl Request {
         }
     }
 
-    fn serialize(&self) -> [u8; 64] {
-        let mut buffer: [u8; 64] = [0; 64];
+    fn serialize(&self) -> [u8; 48] {
+        let mut buffer: [u8; 48] = [0; 48];
         buffer[0] = self.header.bit_field;
         buffer[1] = self.header.stratum;
         buffer[2] = self.header.poll;
