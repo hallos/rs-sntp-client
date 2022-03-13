@@ -1,6 +1,9 @@
 use std::net::UdpSocket;
 use std::time::SystemTime;
 
+// Seconds from NTP timestamp epoch to UNIX epoch
+const NTP_TIMESTAMP_UNIX_EPOCH: u32 = 2208988800;
+
 pub enum ProtocolMode {
     SymmetricActive,
     SymmetricPassive,
@@ -23,6 +26,23 @@ struct NtpTimestamp {
 impl NtpTimestamp {
     fn default () -> NtpTimestamp {
         NtpTimestamp {seconds: 0, fraction: 0}
+    }
+    // ToDo: Add unit test
+    fn from_unix_timestamp(unix_timestamp: std::time::Duration) -> NtpTimestamp {
+        // Calculate fraction part of timestamp
+        let mut frac: u64 = unix_timestamp.subsec_micros() as u64;
+        frac = frac.rotate_left(32) / 1000000;
+        // Construct NtpTimestamp struct
+        NtpTimestamp {
+            seconds: unix_timestamp.as_secs() as u32 + NTP_TIMESTAMP_UNIX_EPOCH,
+            fraction: frac as u32,
+        }
+    }
+    // ToDo: Add unit test
+    fn get_unix_timestamp(&self) -> std::time::Duration {
+        let unix_seconds: u32 = self.seconds - NTP_TIMESTAMP_UNIX_EPOCH;
+        let microseconds: u64 = self.fraction as u64 * 1000000;
+        std::time::Duration::from_micros(unix_seconds as u64 * 1000000 + microseconds.rotate_right(32))
     }
 }
 
@@ -65,9 +85,8 @@ impl SntpPacket {
         self.bit_field |= protcol_version << 3;
     }
 
-    fn set_transmit_timestamp(&mut self, unix_timestamp_us: u32) {
-        self.transmit_timestamp.seconds = unix_timestamp_us / 1000000;
-        self.transmit_timestamp.fraction = unix_timestamp_us - self.transmit_timestamp.seconds;
+    fn set_transmit_timestamp(&mut self, timestamp: NtpTimestamp) {
+        self.transmit_timestamp = timestamp;
     }
 
     fn serialize(&self) -> [u8; 48] {
@@ -105,8 +124,9 @@ impl ClientRequest {
         ClientRequest {sntp_packet: request_packet}
     }
 
-    fn set_timestamp(&self, unix_timestamp_us: u32) {
-        self.sntp_packet.set_transmit_timestamp(unix_timestamp_us);
+    fn set_timestamp(&mut self, unix_timestamp: std::time::Duration) {
+        let timestamp = NtpTimestamp::from_unix_timestamp(unix_timestamp);
+        self.sntp_packet.set_transmit_timestamp(timestamp);
     }
 
     fn get_buffer(&self) -> [u8; 48] {
@@ -118,17 +138,17 @@ impl ClientRequest {
 
 
 fn main() {
-    let request = ClientRequest::default();
+    let mut request = ClientRequest::default();
 
     let socket = UdpSocket::bind("0.0.0.0:0").expect("couldn't bind to address");
     socket.set_read_timeout(Some(std::time::Duration::from_secs(10))).expect("set_read_timeout call failed");
 
     // Take origin/transmit timestamp
     let origin_timestamp = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-        Ok(n) => n.as_micros(),
-        Err(_) => 0,
+        Ok(n) => n,
+        Err(_) => std::time::Duration::ZERO,
     };
-    request.set_timestamp(origin_timestamp.try_into());
+    request.set_timestamp(origin_timestamp);
 
     // Serialize and send request
     let buffer = request.get_buffer();
