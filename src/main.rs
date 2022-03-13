@@ -1,5 +1,6 @@
 use std::net::UdpSocket;
 use std::time::SystemTime;
+use std::convert::TryInto;
 
 // Seconds from NTP timestamp epoch to UNIX epoch
 const NTP_TIMESTAMP_UNIX_EPOCH: u32 = 2208988800;
@@ -67,6 +68,32 @@ impl SntpPacket {
     fn default () -> SntpPacket {
         SntpPacket {bit_field: 0, stratum: 0, poll: 0, precision: 0, root_delay: 0, root_dispersion: 0, reference_id: 0, reference_timestamp: NtpTimestamp::default(),
             origin_timestamp: NtpTimestamp::default(), receive_timestamp: NtpTimestamp::default(), transmit_timestamp: NtpTimestamp::default(), key_identifier: 0, message_digest: 0}
+    }
+
+    fn from_bytes(bytes: &[u8; 48]) -> SntpPacket {
+        SntpPacket {
+            bit_field: bytes[0],
+            stratum: bytes[1],
+            poll: bytes[2],
+            precision: bytes[3],
+            root_delay: u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+            root_dispersion: u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]),
+            reference_id: u32::from_be_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]),
+            reference_timestamp: NtpTimestamp {
+                seconds: u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]),
+                fraction: u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]])},
+            origin_timestamp: NtpTimestamp {
+                seconds: u32::from_be_bytes([bytes[24], bytes[25], bytes[26], bytes[27]]),
+                fraction: u32::from_be_bytes([bytes[28], bytes[29], bytes[30], bytes[31]])},
+            receive_timestamp: NtpTimestamp {
+                seconds: u32::from_be_bytes([bytes[32], bytes[33], bytes[34], bytes[35]]),
+                fraction: u32::from_be_bytes([bytes[36], bytes[37], bytes[38], bytes[39]])},
+            transmit_timestamp: NtpTimestamp {
+                seconds: u32::from_be_bytes([bytes[40], bytes[41], bytes[42], bytes[43]]),
+                fraction: u32::from_be_bytes([bytes[44], bytes[45], bytes[46], bytes[47]])},
+            key_identifier: 0,
+            message_digest: 0,
+        }    
     }
 
     fn set_mode(&mut self, mode: ProtocolMode) {
@@ -160,6 +187,9 @@ fn main() {
     let mut recv_buffer = [0; 48];
     let (number_of_bytes, src_addr) = socket.recv_from(&mut recv_buffer).expect("Didn't receive data");
     println!("Received {} bytes from {}", number_of_bytes, src_addr);
+
+    let response_packet = SntpPacket::from_bytes(&recv_buffer);
+    println!("Reference timestamp: {}.{}", response_packet.receive_timestamp.seconds, response_packet.receive_timestamp.fraction)
 
 }
 
