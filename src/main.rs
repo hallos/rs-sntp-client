@@ -28,7 +28,11 @@ impl NtpTimestamp {
     fn default () -> NtpTimestamp {
         NtpTimestamp {seconds: 0, fraction: 0}
     }
-    // ToDo: Add unit test
+
+    /// Create a NtpTimestamp from a unix timestamp
+    ///
+    /// # Arguments
+    /// * `unix_timestamp` - std::time::Duration with Unix timestamp to use
     fn from_unix_timestamp(unix_timestamp: std::time::Duration) -> NtpTimestamp {
         // Calculate fraction part of timestamp
         let mut frac: u64 = unix_timestamp.subsec_micros() as u64;
@@ -39,7 +43,8 @@ impl NtpTimestamp {
             fraction: frac as u32,
         }
     }
-    // ToDo: Add unit test
+
+    /// Returns timestamp as Unix timestamp with microseconds resolution
     fn get_unix_timestamp(&self) -> std::time::Duration {
         let unix_seconds: u32 = self.seconds - NTP_TIMESTAMP_UNIX_EPOCH;
         let microseconds: u64 = self.fraction as u64 * 1000000;
@@ -168,7 +173,7 @@ fn main() {
     let mut request = ClientRequest::default();
 
     let socket = UdpSocket::bind("0.0.0.0:0").expect("couldn't bind to address");
-    socket.set_read_timeout(Some(std::time::Duration::from_secs(10))).expect("set_read_timeout call failed");
+    socket.set_read_timeout(Some(std::time::Duration::from_secs(3))).expect("set_read_timeout call failed");
 
     // Take origin/transmit timestamp
     let origin_timestamp = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
@@ -189,7 +194,8 @@ fn main() {
     println!("Received {} bytes from {}", number_of_bytes, src_addr);
 
     let response_packet = SntpPacket::from_bytes(&recv_buffer);
-    println!("Reference timestamp: {}.{}", response_packet.receive_timestamp.seconds, response_packet.receive_timestamp.fraction)
+    println!("Reference timestamp: {}.{}", response_packet.receive_timestamp.seconds, response_packet.receive_timestamp.fraction);
+    println!("Unix timestamp: {:?}", response_packet.receive_timestamp.get_unix_timestamp());
 
 }
 
@@ -212,5 +218,28 @@ mod tests {
         packet.set_version(ProtocolVersion::SNTPv4);
 
         assert_eq!(packet.bit_field, 0b00100000);
+    }
+}
+
+#[cfg(test)]
+mod ntp_tests {
+    use super::*;
+
+    #[test]
+    fn test_from_unix_timestamp() {
+        let unix_timestamp:u32 = 1648820870;
+        let ntp_timestamp = NtpTimestamp::from_unix_timestamp(std::time::Duration::from_secs(unix_timestamp as u64));
+
+        assert_eq!(ntp_timestamp.seconds, NTP_TIMESTAMP_UNIX_EPOCH + unix_timestamp);
+    }
+
+    #[test]
+    fn test_get_unix_timestamp() {
+        let timestamp = 3857980091;
+        let expected_timestamp = timestamp - NTP_TIMESTAMP_UNIX_EPOCH;
+        let ntp_timestamp = NtpTimestamp { seconds: timestamp, fraction: 0};
+        let received_timestamp = ntp_timestamp.get_unix_timestamp();
+
+        assert_eq!(expected_timestamp as u64, received_timestamp.as_secs());
     }
 }
