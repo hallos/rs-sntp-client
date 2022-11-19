@@ -1,6 +1,6 @@
 use std::net::UdpSocket;
 use std::time::SystemTime;
-use std::convert::TryInto;
+use chrono::{TimeZone, Utc};
 
 // Seconds from NTP timestamp epoch to UNIX epoch
 const NTP_TIMESTAMP_UNIX_EPOCH: u32 = 2208988800;
@@ -36,7 +36,7 @@ impl NtpTimestamp {
     fn from_unix_timestamp(unix_timestamp: std::time::Duration) -> NtpTimestamp {
         // Calculate fraction part of timestamp
         let mut frac: u64 = unix_timestamp.subsec_micros() as u64;
-        frac = frac.rotate_left(32) / 1000000;
+        frac = frac << 32 / 1000000;
         // Construct NtpTimestamp struct
         NtpTimestamp {
             seconds: unix_timestamp.as_secs() as u32 + NTP_TIMESTAMP_UNIX_EPOCH,
@@ -48,7 +48,7 @@ impl NtpTimestamp {
     fn get_unix_timestamp(&self) -> std::time::Duration {
         let unix_seconds: u32 = self.seconds - NTP_TIMESTAMP_UNIX_EPOCH;
         let microseconds: u64 = self.fraction as u64 * 1000000;
-        std::time::Duration::from_micros(unix_seconds as u64 * 1000000 + microseconds.rotate_right(32))
+        std::time::Duration::from_micros(unix_seconds as u64 * 1000000 + (microseconds >> 32))
     }
 }
 
@@ -196,6 +196,11 @@ fn main() {
     let response_packet = SntpPacket::from_bytes(&recv_buffer);
     println!("Reference timestamp: {}.{}", response_packet.receive_timestamp.seconds, response_packet.receive_timestamp.fraction);
     println!("Unix timestamp: {:?}", response_packet.receive_timestamp.get_unix_timestamp());
+
+    // Convert to date string
+    let unix_timestamp = response_packet.receive_timestamp.get_unix_timestamp();
+    let datetime = Utc.timestamp_opt(unix_timestamp.as_secs() as i64, unix_timestamp.subsec_nanos());
+    println!("Current date: {:?}", datetime);
 
 }
 
