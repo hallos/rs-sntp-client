@@ -1,5 +1,6 @@
 use std::net::UdpSocket;
 use std::time::SystemTime;
+use std::sync::atomic::{AtomicBool, Ordering};
 use chrono::{TimeZone, Utc};
 
 // Seconds from NTP timestamp epoch to UNIX epoch
@@ -166,42 +167,83 @@ impl ClientRequest {
     }
 }
 
+#[derive(Default)]
+struct SntpClient {
+    host: String,
+    thread_handle: Option<std::thread::JoinHandle<()>>,
+    run: std::sync::Arc<AtomicBool>,
+}
 
+impl SntpClient {
+    fn new (host: &str) -> SntpClient {
+        SntpClient {
+            host: host.to_string(),
+            run: std::sync::Arc::new(AtomicBool::new(false)),
+            thread_handle: None
+        }
+    }
+
+    fn start (&mut self) {
+        self.run.store(true, Ordering::Relaxed);
+        let run_thread = self.run.clone();
+        // Spawn SNTP client thread
+        self.thread_handle = match std::thread::Builder::new().name("sntp_client".to_string()).spawn(move || {
+            // Create socket
+            let socket = UdpSocket::bind("0.0.0.0:0").expect("couldn't bind to address");
+            socket.set_read_timeout(Some(std::time::Duration::from_secs(3))).expect("set_read_timeout call failed");
+            // Perform client task until commanded to stop
+            while run_thread.load(Ordering::Relaxed) {
+                let mut request = ClientRequest::default();
+
+                // Take origin/transmit timestamp
+                let origin_timestamp = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+                    Ok(n) => n,
+                    Err(_) => std::time::Duration::ZERO,
+                };
+                request.set_timestamp(origin_timestamp);
+
+                // Serialize and send request
+                let buffer = request.get_buffer();
+                match socket.send_to(&buffer, "pool.ntp.org:123") {
+                    Ok(bytes) => println!("Sent request, {} bytes", bytes),
+                    Err(e) => println!("Error sending datagram: {}", e)
+                }
+
+                let mut recv_buffer = [0; 48];
+                let (number_of_bytes, src_addr) = socket.recv_from(&mut recv_buffer).expect("Didn't receive data");
+                println!("Received {} bytes from {}", number_of_bytes, src_addr);
+
+                let response_packet = SntpPacket::from_bytes(&recv_buffer);
+                println!("Reference timestamp: {}.{}", response_packet.receive_timestamp.seconds, response_packet.receive_timestamp.fraction);
+                println!("Unix timestamp: {:?}", response_packet.receive_timestamp.get_unix_timestamp());
+
+                // Convert to date string
+                let unix_timestamp = response_packet.receive_timestamp.get_unix_timestamp();
+                let datetime = Utc.timestamp_opt(unix_timestamp.as_secs() as i64, unix_timestamp.subsec_nanos());
+                println!("Current date: {:?}", datetime);
+
+                std::thread::sleep(std::time::Duration::from_secs(10));
+            }
+        }) {
+            Ok(handle) => Some(handle),
+            Err(e) => None,
+        };
+    }
+
+    fn stop (&mut self) {
+        self.run.store(false, Ordering::Relaxed);
+    }
+}
 
 
 fn main() {
-    let mut request = ClientRequest::default();
+    let mut client = SntpClient::new("pool.ntp.org:123");
 
-    let socket = UdpSocket::bind("0.0.0.0:0").expect("couldn't bind to address");
-    socket.set_read_timeout(Some(std::time::Duration::from_secs(3))).expect("set_read_timeout call failed");
+    client.start();
 
-    // Take origin/transmit timestamp
-    let origin_timestamp = match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
-        Ok(n) => n,
-        Err(_) => std::time::Duration::ZERO,
-    };
-    request.set_timestamp(origin_timestamp);
+    std::thread::sleep(std::time::Duration::from_secs(30));
 
-    // Serialize and send request
-    let buffer = request.get_buffer();
-    match socket.send_to(&buffer, "pool.ntp.org:123") {
-        Ok(bytes) => println!("Sent request, {} bytes", bytes),
-        Err(e) => println!("Error sending datagram: {}", e)
-    }
-
-    let mut recv_buffer = [0; 48];
-    let (number_of_bytes, src_addr) = socket.recv_from(&mut recv_buffer).expect("Didn't receive data");
-    println!("Received {} bytes from {}", number_of_bytes, src_addr);
-
-    let response_packet = SntpPacket::from_bytes(&recv_buffer);
-    println!("Reference timestamp: {}.{}", response_packet.receive_timestamp.seconds, response_packet.receive_timestamp.fraction);
-    println!("Unix timestamp: {:?}", response_packet.receive_timestamp.get_unix_timestamp());
-
-    // Convert to date string
-    let unix_timestamp = response_packet.receive_timestamp.get_unix_timestamp();
-    let datetime = Utc.timestamp_opt(unix_timestamp.as_secs() as i64, unix_timestamp.subsec_nanos());
-    println!("Current date: {:?}", datetime);
-
+    client.stop();
 }
 
 #[cfg(test)]
