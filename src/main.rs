@@ -13,10 +13,11 @@ impl sntp::SntpResponseHandler for sntp::SntpClient {
 
 fn main() {
     let mut client = sntp::SntpClient::new("pool.ntp.org");
+    client.set_poll_interval(15);
 
     client.start();
 
-    std::thread::sleep(std::time::Duration::from_secs(30));
+    std::thread::sleep(std::time::Duration::from_secs(60));
 
     client.stop();
 }

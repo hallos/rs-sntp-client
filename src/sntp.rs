@@ -2,10 +2,45 @@ use std::net::UdpSocket;
 use std::time::SystemTime;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+
+//1.  A client MUST NOT under any conditions use a poll interval less
+//than 15 seconds.
+//
+//2.  A client SHOULD increase the poll interval using exponential
+//backoff as performance permits and especially if the server does
+//not respond within a reasonable time.
+//
+//3.  A client SHOULD use local servers whenever available to avoid
+//unnecessary traffic on backbone networks.
+//
+//4.  A client MUST allow the operator to configure the primary and/or
+//alternate server names or addresses in addition to or in place of
+//a firmware default IP address.
+//
+//5.  If a firmware default server IP address is provided, it MUST be a
+//server operated by the manufacturer or seller of the device or
+//another server, but only with the operator's permission.
+//
+//6.  A client SHOULD use the Domain Name System (DNS) to resolve the
+//server IP addresses, so the operator can do effective load
+//balancing among a server clique and change IP address binding to
+//canonical names.
+//
+//7.  A client SHOULD re-resolve the server IP address at periodic
+//intervals, but not at intervals less than the time-to-live field
+//in the DNS response.
+//
+//8.  A client SHOULD support the NTP access-refusal mechanism so that
+//a server kiss-o'-death reply in response to a client request
+//causes the client to cease sending requests to that server and to
+//switch to an alternate, if available.
+
 // Seconds from NTP timestamp epoch to UNIX epoch
 const NTP_TIMESTAMP_UNIX_EPOCH: u32 = 2208988800;
 // NTP default UDP port
 const NTP_PORT: &str = "123";
+// SNTP minimum allowed poll interval
+const SNTP_MIN_POLL_INTERVAL: u32 = 15;
 
 #[allow(dead_code)]
 pub enum ProtocolMode {
@@ -178,16 +213,29 @@ pub trait SntpResponseHandler {
 #[derive(Default)]
 pub struct SntpClient {
     host: String,
+    poll_interval: u32,
     thread_handle: Option<std::thread::JoinHandle<()>>,
     run: std::sync::Arc<AtomicBool>,
 }
 
+#[allow(dead_code)]
 impl SntpClient {
     pub fn new (host: &str) -> SntpClient {
         SntpClient {
             host: host.to_string(),
             run: std::sync::Arc::new(AtomicBool::new(false)),
-            thread_handle: None
+            thread_handle: None,
+            poll_interval: 64
+        }
+    }
+
+    pub fn set_poll_interval (&mut self, poll_interval: u32) {
+        if poll_interval < SNTP_MIN_POLL_INTERVAL {
+            println!("WARN: Poll interval less than minimum allowed (15), setting poll interval to 15s");
+            self.poll_interval = 15;
+        }
+        else {
+            self.poll_interval = poll_interval;
         }
     }
 
@@ -195,6 +243,7 @@ impl SntpClient {
         self.run.store(true, Ordering::Relaxed);
         let run_thread = self.run.clone();
         let ntp_host = format!("{}:{}", self.host, NTP_PORT);
+        let poll_interval: u64 = self.poll_interval.into();
 
         // Spawn SNTP client thread
         self.thread_handle = match std::thread::Builder::new().name("sntp_client".to_string()).spawn(move || {
@@ -229,7 +278,7 @@ impl SntpClient {
                 // Call response handling function with newly received timestamp
                 SntpClient::handle_sntp_response(response_packet.receive_timestamp.get_unix_timestamp());
 
-                std::thread::sleep(std::time::Duration::from_secs(10));
+                std::thread::sleep(std::time::Duration::from_secs(poll_interval));
             }
         }) {
             Ok(handle) => Some(handle),
