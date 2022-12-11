@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 // Seconds from NTP timestamp epoch to UNIX epoch
 const NTP_TIMESTAMP_UNIX_EPOCH: u32 = 2208988800;
+// NTP default UDP port
+const NTP_PORT: &str = "123";
 
 #[allow(dead_code)]
 pub enum ProtocolMode {
@@ -192,6 +194,8 @@ impl SntpClient {
     pub fn start (&mut self) {
         self.run.store(true, Ordering::Relaxed);
         let run_thread = self.run.clone();
+        let ntp_host = format!("{}:{}", self.host, NTP_PORT);
+
         // Spawn SNTP client thread
         self.thread_handle = match std::thread::Builder::new().name("sntp_client".to_string()).spawn(move || {
             // Create socket
@@ -210,18 +214,17 @@ impl SntpClient {
 
                 // Serialize and send request
                 let buffer = request.get_buffer();
-                match socket.send_to(&buffer, "pool.ntp.org:123") {
-                    Ok(bytes) => println!("Sent request, {} bytes", bytes),
+                match socket.send_to(&buffer, ntp_host.as_str()) {
+                    Ok(_bytes) => (), // ToDo: Add logging, println!("Sent request, {} bytes", bytes),
                     Err(e) => println!("Error sending datagram: {}", e)
                 }
 
                 let mut recv_buffer = [0; 48];
-                let (number_of_bytes, src_addr) = socket.recv_from(&mut recv_buffer).expect("Didn't receive data");
-                println!("Received {} bytes from {}", number_of_bytes, src_addr);
+                let (_number_of_bytes, _src_addr) = socket.recv_from(&mut recv_buffer).expect("Didn't receive data");
 
                 let response_packet = SntpPacket::from_bytes(&recv_buffer);
-                println!("Reference timestamp: {}.{}", response_packet.receive_timestamp.seconds, response_packet.receive_timestamp.fraction);
-                println!("Unix timestamp: {:?}", response_packet.receive_timestamp.get_unix_timestamp());
+//                println!("Reference timestamp: {}.{}", response_packet.receive_timestamp.seconds, response_packet.receive_timestamp.fraction);
+//                println!("Unix timestamp: {:?}", response_packet.receive_timestamp.get_unix_timestamp());
 
                 // Call response handling function with newly received timestamp
                 SntpClient::handle_sntp_response(response_packet.receive_timestamp.get_unix_timestamp());

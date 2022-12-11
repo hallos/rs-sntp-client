@@ -12,7 +12,7 @@ impl sntp::SntpResponseHandler for sntp::SntpClient {
 
 
 fn main() {
-    let mut client = sntp::SntpClient::new("pool.ntp.org:123");
+    let mut client = sntp::SntpClient::new("pool.ntp.org");
 
     client.start();
 
