@@ -1,6 +1,7 @@
 use std::net::UdpSocket;
 use std::time::SystemTime;
 use std::sync::atomic::{AtomicBool, Ordering};
+use log::{debug, info, warn, error};
 
 
 //1.  A client MUST NOT under any conditions use a poll interval less
@@ -231,7 +232,7 @@ impl SntpClient {
 
     pub fn set_poll_interval (&mut self, poll_interval: u32) {
         if poll_interval < SNTP_MIN_POLL_INTERVAL {
-            println!("WARN: Poll interval less than minimum allowed (15), setting poll interval to 15s");
+            warn!("Poll interval less than minimum allowed (15s), setting poll interval to 15s");
             self.poll_interval = 15;
         }
         else {
@@ -264,16 +265,15 @@ impl SntpClient {
                 // Serialize and send request
                 let buffer = request.get_buffer();
                 match socket.send_to(&buffer, ntp_host.as_str()) {
-                    Ok(_bytes) => (), // ToDo: Add logging, println!("Sent request, {} bytes", bytes),
-                    Err(e) => println!("Error sending datagram: {}", e)
+                    Ok(_bytes) => info!("Sent request to {}", ntp_host),
+                    Err(e) => error!("Error sending datagram to NTP host '{}' - {}", ntp_host, e)
                 }
 
                 let mut recv_buffer = [0; 48];
                 let (_number_of_bytes, _src_addr) = socket.recv_from(&mut recv_buffer).expect("Didn't receive data");
 
                 let response_packet = SntpPacket::from_bytes(&recv_buffer);
-//                println!("Reference timestamp: {}.{}", response_packet.receive_timestamp.seconds, response_packet.receive_timestamp.fraction);
-//                println!("Unix timestamp: {:?}", response_packet.receive_timestamp.get_unix_timestamp());
+                debug!("Reference timestamp: {}.{}, UNIX timestamp: {:?}", response_packet.receive_timestamp.seconds, response_packet.receive_timestamp.fraction, response_packet.receive_timestamp.get_unix_timestamp());
 
                 // Call response handling function with newly received timestamp
                 SntpClient::handle_sntp_response(response_packet.receive_timestamp.get_unix_timestamp());
