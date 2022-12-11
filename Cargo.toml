@@ -9,5 +9,5 @@ edition = "2018"
 chrono = "0.4.23"
 
 [profile.release]
-opt-level = 'z'     # Optimize for size.
-strip = true        # Strip symbols from binary*
+opt-level = 'z'     # Optimize for size
+strip = true        # Strip symbols from binary
