@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 // Seconds from NTP timestamp epoch to UNIX epoch
 const NTP_TIMESTAMP_UNIX_EPOCH: u32 = 2208988800;
 
+#[allow(dead_code)]
 pub enum ProtocolMode {
     SymmetricActive,
     SymmetricPassive,
@@ -13,6 +14,7 @@ pub enum ProtocolMode {
     Broadcast,
 }
 
+#[allow(dead_code)]
 pub enum ProtocolVersion {
     SNTPv3,
     SNTPv4,
@@ -53,6 +55,7 @@ impl NtpTimestamp {
 }
 
 #[derive(Default)]
+#[allow(dead_code)]
 struct SntpPacket {
     bit_field: u8,
     stratum: u8,
