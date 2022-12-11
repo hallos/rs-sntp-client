@@ -12,6 +12,7 @@ impl sntp::SntpResponseHandler for sntp::SntpClient {
 
 
 fn main() {
+    env_logger::init();
     let mut client = sntp::SntpClient::new("pool.ntp.org");
     client.set_poll_interval(15);
 
