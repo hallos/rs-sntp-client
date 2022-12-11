@@ -1,8 +1,6 @@
 use std::net::UdpSocket;
 use std::time::SystemTime;
 use std::sync::atomic::{AtomicBool, Ordering};
-use chrono::{TimeZone, Utc};
-
 
 // Seconds from NTP timestamp epoch to UNIX epoch
 const NTP_TIMESTAMP_UNIX_EPOCH: u32 = 2208988800;
@@ -168,6 +166,10 @@ impl ClientRequest {
     }
 }
 
+pub trait SntpResponseHandler {
+    fn handle_sntp_response (unix_timestamp: std::time::Duration);
+}
+
 #[derive(Default)]
 pub struct SntpClient {
     host: String,
@@ -218,16 +220,14 @@ impl SntpClient {
                 println!("Reference timestamp: {}.{}", response_packet.receive_timestamp.seconds, response_packet.receive_timestamp.fraction);
                 println!("Unix timestamp: {:?}", response_packet.receive_timestamp.get_unix_timestamp());
 
-                // Convert to date string
-                let unix_timestamp = response_packet.receive_timestamp.get_unix_timestamp();
-                let datetime = Utc.timestamp_opt(unix_timestamp.as_secs() as i64, unix_timestamp.subsec_nanos());
-                println!("Current date: {:?}", datetime);
+                // Call response handling function with newly received timestamp
+                SntpClient::handle_sntp_response(response_packet.receive_timestamp.get_unix_timestamp());
 
                 std::thread::sleep(std::time::Duration::from_secs(10));
             }
         }) {
             Ok(handle) => Some(handle),
-            Err(e) => None,
+            Err(_e) => None,
         };
     }
 
